@@ -71,7 +71,7 @@
             <p>1. diena</p>
         </div>
         <div class="face back">
-            <img src="/public/image1.jpeg" alt="test" />
+            <img src="/image1.jpeg" alt="image from trip" />
         </div>
     </div>
 </div>
