@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount } from "svelte";
+    import { onMount, tick } from "svelte";
 
     const SHEET_CSV =
         "https://docs.google.com/spreadsheets/d/e/2PACX-1vT2z-pph9uPd0s3jI8mcgfSmto87TqICkwhvmMVvW1hNJ9UzrCN_Pk7XSorKC-5D4aqYW7n-SuguXDR/pub?gid=0&single=true&output=csv";
@@ -12,6 +12,8 @@
     let day = $state("");
     let imageUrl = $state("");
     let frontText = $state("");
+    let loading = $state(true);
+    let error = $state(false);
 
     function updateTilt(e: MouseEvent) {
         const { left, top, width, height } = rect;
@@ -60,46 +62,66 @@
     }
 
     async function loadContent() {
-        const res = await fetch(SHEET_CSV);
-        const csv = await res.text();
-        const data = csvRowToObj(csv);
+        try {
+            const res = await fetch(SHEET_CSV);
+            if (!res.ok) throw new Error("bad status");
 
-        frontText = data.frontText;
-        day = data.day;
-        imageUrl = data.imageUrl;
+            const csv = await res.text();
+            const data = csvRowToObj(csv);
+
+            frontText = data.frontText;
+            day = data.day;
+            imageUrl = data.imageUrl;
+        } catch (e) {
+            console.error(e);
+            error = true;
+        } finally {
+            loading = false;
+        }
     }
 
     onMount(async () => {
-        cardEl = el.querySelector(".card")!;
-        rect = el.getBoundingClientRect();
-        window.addEventListener(
-            "resize",
-            () => (rect = el.getBoundingClientRect()),
-        );
+        await loadContent();
 
-        loadContent(); // first load
+        await tick();
+
+        cardEl = el.querySelector(".card");
+        rect = el.getBoundingClientRect();
+
         const t = setInterval(loadContent, 60_000);
-        return () => clearInterval(t);
+        const updateRect = () => (rect = el.getBoundingClientRect());
+        window.addEventListener("resize", updateRect);
+
+        return () => {
+            clearInterval(t);
+            window.removeEventListener("resize", updateRect);
+        };
     });
 </script>
 
-<div
-    bind:this={el}
-    class="card-container"
-    onclick={handleClick}
-    onmousemove={updateTilt}
-    onmouseleave={handleLeave}
->
-    <div class="card" class:flipped>
-        <div class="face front">
-            <p>{frontText}</p>
-            <p>{day}</p>
-        </div>
-        <div class="face back">
-            <img src={imageUrl} alt="image from trip" />
+{#if loading}
+    <div class="loader"></div>
+{:else if error}
+    <p>Sorry—couldn’t load the data right now.</p>
+{:else}
+    <div
+        bind:this={el}
+        class="card-container"
+        onclick={handleClick}
+        onmousemove={updateTilt}
+        onmouseleave={handleLeave}
+    >
+        <div class="card" class:flipped>
+            <div class="face front">
+                <p>{frontText}</p>
+                <p>{day}</p>
+            </div>
+            <div class="face back">
+                <img src={imageUrl} alt="image from trip" />
+            </div>
         </div>
     </div>
-</div>
+{/if}
 
 <style>
     .card-container {
@@ -107,6 +129,29 @@
         height: 18.75rem;
         perspective: 1000px;
         position: relative;
+    }
+
+    .loader {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 40vh; /* keeps the card from jumping */
+        font-size: 1.2rem;
+    }
+    .loader::after {
+        content: "";
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        border: 4px solid #cfcfcf;
+        border-top-color: #fe0100;
+        animation: spin 0.8s linear infinite;
+        margin-left: 0.5rem;
+    }
+    @keyframes spin {
+        to {
+            transform: rotate(360deg);
+        }
     }
 
     .card {
