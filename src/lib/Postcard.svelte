@@ -1,11 +1,17 @@
 <script lang="ts">
     import { onMount } from "svelte";
 
+    const SHEET_CSV =
+        "https://docs.google.com/spreadsheets/d/e/2PACX-1vT2z-pph9uPd0s3jI8mcgfSmto87TqICkwhvmMVvW1hNJ9UzrCN_Pk7XSorKC-5D4aqYW7n-SuguXDR/pub?gid=0&single=true&output=csv";
+
     const maxTilt = 15;
     let flipped = $state(false);
     let el: HTMLElement;
     let cardEl: HTMLElement;
     let rect: DOMRect;
+    let day = $state("");
+    let imageUrl = $state("");
+    let frontText = $state("");
 
     function updateTilt(e: MouseEvent) {
         const { left, top, width, height } = rect;
@@ -29,7 +35,6 @@
         const target = el.querySelector(
             flipped ? ".back" : ".front",
         ) as HTMLElement;
-        console.log(target);
         target.style.transform = `
             rotateX(0deg)
             rotateY(${flipped ? 180 : 0}deg)
@@ -40,21 +45,41 @@
     const handleClick = () => {
         flipped = !flipped;
         cardEl.classList.toggle("flipped");
-
-        // Disable tilt during flip
-        // el.removeEventListener("mousemove", updateTilt, true);
-        // setTimeout(() => {
-        //     el.addEventListener("mousemove", updateTilt);
-        // }, 1000);
     };
 
-    onMount(() => {
+    function csvRowToObj(csvText) {
+        const [headerLine, valueLine] = csvText.trim().split("\n");
+
+        // trim quotes and whitespace on every header / value
+        const clean = (s) => s.replace(/^"|"$/g, "").trim();
+
+        const headers = headerLine.split(",").map(clean);
+        const values = valueLine.split(",").map(clean);
+
+        return Object.fromEntries(headers.map((h, i) => [h, values[i]]));
+    }
+
+    async function loadContent() {
+        const res = await fetch(SHEET_CSV);
+        const csv = await res.text();
+        const data = csvRowToObj(csv);
+
+        frontText = data.frontText;
+        day = data.day;
+        imageUrl = data.imageUrl;
+    }
+
+    onMount(async () => {
         cardEl = el.querySelector(".card")!;
         rect = el.getBoundingClientRect();
         window.addEventListener(
             "resize",
             () => (rect = el.getBoundingClientRect()),
         );
+
+        loadContent(); // first load
+        const t = setInterval(loadContent, 60_000);
+        return () => clearInterval(t);
     });
 </script>
 
@@ -67,11 +92,11 @@
 >
     <div class="card" class:flipped>
         <div class="face front">
-            <p>Karstums Parīzē</p>
-            <p>1. diena</p>
+            <p>{frontText}</p>
+            <p>{day}</p>
         </div>
         <div class="face back">
-            <img src="/image1.jpeg" alt="image from trip" />
+            <img src={imageUrl} alt="image from trip" />
         </div>
     </div>
 </div>
